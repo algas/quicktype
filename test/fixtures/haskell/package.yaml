@@ -3,6 +3,9 @@ version: 0.0.1
 category: Data
 dependencies:
   - base >= 4.7 && < 5
+  - aeson
+  - bytestring
+  - text
 
 executables:
   haskell:

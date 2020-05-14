@@ -1,5 +1,6 @@
 module Main where
 
+import QuickType
 import System.Environment
 
 main :: IO ()
