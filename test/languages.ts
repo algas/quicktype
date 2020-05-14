@@ -897,9 +897,11 @@ export const HaskellLanguage: Language = {
   name: "haskell",
   base: "test/fixtures/haskell",
   setupCommand: "true",
+  // compileCommand: "stack build",
   compileCommand: "true",
   runCommand(sample: string) {
-    return `cat "${sample}"`;
+    // return `cat "${sample}"`;
+    return `stack exec haskell "${sample}"`;
   },
   diffViaSchema: true,
   skipDiffViaSchema: [
@@ -931,7 +933,7 @@ export const HaskellLanguage: Language = {
   ],
   allowMissingNull: false,
   features: ["enum", "union", "no-defaults"],
-  output: "QuickType.elm",
+  output: "QuickType.hs",
   topLevel: "QuickType",
   skipJSON: [
     "identifiers.json",
