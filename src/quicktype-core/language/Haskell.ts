@@ -1,3 +1,4 @@
+// 名前の重複を解決するために lens-aeson が必要
 // import { mapContains, arrayIntercalate } from "collection-utils";
 import { mapContains } from "collection-utils";
 
@@ -288,10 +289,10 @@ export class HaskellRenderer extends ConvenienceRenderer {
             (_boolType) => singleWord("Bool"),
             (_integerType) => singleWord("Int"),
             (_doubleType) => singleWord("Float"),
-            (_stringType) => singleWord("!Text"),
+            (_stringType) => singleWord("Text"),
             (arrayType) => multiWord(" ", this.arrayType, parenIfNeeded(this.haskellType(arrayType.items))),
             (classType) => singleWord(this.nameForNamedType(classType)),
-            (mapType) => multiWord(" ", "Dict !Text", parenIfNeeded(this.haskellType(mapType.values))),
+            (mapType) => multiWord(" ", "Map Text", parenIfNeeded(this.haskellType(mapType.values))),
             (enumType) => singleWord(this.nameForNamedType(enumType)),
             (unionType) => {
                 const nullable = nullableFromUnion(unionType);
@@ -419,11 +420,11 @@ export class HaskellRenderer extends ConvenienceRenderer {
         });
 
         this.emitDescription(description);
-        this.emitLine("data ", className, " = ", className, " {");
+        this.emitLine("data ", className, " = ", className);
         this.indent(() => {
             let onFirst = true;
             this.forEachClassProperty(c, "none", (name, _jsonName, p) => {
-                this.emitLine(onFirst ? " " : ",", " ", name, " :: ", this.haskellProperty(p));
+                this.emitLine(onFirst ? "{" : ",", " _", className, "_", name, " :: ", this.haskellProperty(p));
                 onFirst = false;
             });
             if (onFirst) {
@@ -435,7 +436,7 @@ export class HaskellRenderer extends ConvenienceRenderer {
 
     private emitEnumDefinition(e: EnumType, enumName: Name): void {
         this.emitDescription(this.descriptionForType(e));
-        this.emitLine("type ", enumName);
+        this.emitLine("data ", enumName);
         this.indent(() => {
             let onFirst = true;
             this.forEachEnumCase(e, "none", (name) => {
@@ -448,7 +449,7 @@ export class HaskellRenderer extends ConvenienceRenderer {
 
     private emitUnionDefinition(u: UnionType, unionName: Name): void {
         this.emitDescription(this.descriptionForType(u));
-        this.emitLine("type ", unionName);
+        this.emitLine("data ", unionName);
         this.indent(() => {
             let onFirst = true;
             this.forEachUnionMember(u, null, "none", null, (constructor, t) => {
@@ -476,8 +477,8 @@ export class HaskellRenderer extends ConvenienceRenderer {
     }
 
     private emitEncoderInstances(c: ClassType, className: Name): void {
-        this.emitLine("instance FromJSON ", className);
-        this.emitLine("instance ToJSON ", className);
+        this.emitLine("makeFields ''", className);
+        this.emitLine("deriveJSON defaultOptions{fieldLabelModifier = map toLower . drop (2 + length (\"", className, "\" :: String))} ''", className);
         c;
         //     const encoderName = this.encoderNameForNamedType(c);
         //     this.emitLine("instance ToJSON ", encoderName, " ", className, " where");
@@ -543,7 +544,7 @@ export class HaskellRenderer extends ConvenienceRenderer {
         this.ensureBlankLine();
 
         const encoderName = this.encoderNameForNamedType(e);
-        this.emitLine(encoderName, " :: ", enumName, " -> Jenc.Value");
+        this.emitLine(encoderName, " :: ", enumName, " -> Value");
         this.emitLine(encoderName, " x = case x of");
         this.indent(() => {
             this.forEachEnumCase(e, "none", (name, jsonName) => {
@@ -588,7 +589,7 @@ export class HaskellRenderer extends ConvenienceRenderer {
         this.ensureBlankLine();
 
         const encoderName = this.encoderNameForNamedType(u);
-        this.emitLine(encoderName, " : ", unionName, " -> Jenc.Value");
+        this.emitLine(encoderName, " :: ", unionName, " -> Value");
         this.emitLine(encoderName, " x = case x of");
         this.indent(() => {
             this.forEachUnionMember(u, null, "none", sortOrder, (constructor, t) => {
@@ -627,8 +628,11 @@ export class HaskellRenderer extends ConvenienceRenderer {
             if (!mapContains(this.topLevels, t)) exports.push([name, "(..)"]);
         });
 
+        this.emitLanguageExtensions('DeriveAnyClass');
         this.emitLanguageExtensions('DeriveGeneric');
+        this.emitLanguageExtensions('FunctionalDependencies');
         this.emitLanguageExtensions('OverloadedStrings');
+        this.emitLanguageExtensions('TemplateHaskell');
 
         if (!this._options.justTypes) {
             this.ensureBlankLine();
@@ -640,10 +644,14 @@ export class HaskellRenderer extends ConvenienceRenderer {
                 this.emitLine(") where");
             });
             this.ensureBlankLine();
-
-            this.emitMultiline(`import Data.Aeson
+            this.emitMultiline(`import Control.Lens
+import Data.Aeson
+import Data.Aeson.TH
+import Data.Aeson.Types
 import Data.ByteString.Lazy (ByteString)
+import Data.Char (toLower)
 import Data.Text (Text)
+import qualified Data.Text as T
 import GHC.Generics`);
             // if (this._options.useList) {
             //     this.emitLine("import List exposing (map)");
