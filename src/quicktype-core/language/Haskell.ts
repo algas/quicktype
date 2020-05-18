@@ -1,5 +1,3 @@
-// 名前の重複を解決するために lens-aeson が必要
-// import { mapContains, arrayIntercalate } from "collection-utils";
 import { mapContains } from "collection-utils";
 
 import { TargetLanguage } from "../TargetLanguage";
@@ -12,8 +10,6 @@ import {
     legalizeCharacters,
     isLetterOrUnderscoreOrDigit,
     isLetterOrUnderscore,
-    decapitalize,
-    stringEscape,
     isAscii,
     splitIntoWords,
     combineWords,
@@ -21,9 +17,8 @@ import {
     allLowerWordStyle,
     allUpperWordStyle,
 } from "../support/Strings";
-import { defined } from "../support/Support";
 import { Sourcelike, annotated, MultiWord, singleWord, multiWord, parenIfNeeded } from "../Source";
-import { anyTypeIssueAnnotation, nullTypeIssueAnnotation } from "../Annotation";
+import { anyTypeIssueAnnotation } from "../Annotation";
 import { RenderContext } from "../Renderer";
 
 export const haskellOptions = {
@@ -94,45 +89,17 @@ const forbiddenNames = [
     "type",
     "where",
     // in Prelude keywords ...
-
-    // "if",
-    // "then",
-    // "else",
-    // "case",
-    // "of",
-    // "let",
-    // "in",
-    // "infix",
-    // "type",
-    // "module",
-    // "where",
-    // "import",
-    // "exposing",
-    // "as",
-    // "port",
-    // "int",
-    // "float",
-    // "bool",
-    // "string",
-    // "Jenc",
-    // "Jdec",
-    // "Jpipe",
-    // "always",
-    // "identity",
-    // "Array",
-    // "List",
-    // "Dict",
-    // "Maybe",
-    // "map",
-    // "toList",
-    // "makeArrayEncoder",
-    // "makeDictEncoder",
-    // "makeNullableEncoder",
-    // "Int",
-    // "True",
-    // "False",
-    // "String",
-    // "Float",
+    "Array",
+    "HashMap",
+    "Map",
+    "Maybe",
+    "Bool",
+    "Int",
+    "True",
+    "False",
+    // Aeson types
+    "encode",
+    "decode",
 ];
 
 const legalizeName = legalizeCharacters((cp) => isAscii(cp) && isLetterOrUnderscoreOrDigit(cp));
@@ -154,39 +121,7 @@ function haskellNameStyle(original: string, upper: boolean): string {
 const upperNamingFunction = funPrefixNamer("upper", (n) => haskellNameStyle(n, true));
 const lowerNamingFunction = funPrefixNamer("lower", (n) => haskellNameStyle(n, false));
 
-// type RequiredOrOptional = {
-//     reqOrOpt: string;
-//     fallback: string;
-// };
-
-// function requiredOrOptional(p: ClassProperty): RequiredOrOptional {
-//     function optional(fallback: string): RequiredOrOptional {
-//         return { reqOrOpt: "Jpipe.optional", fallback };
-//     }
-//     const t = p.type;
-//     if (p.isOptional || (t instanceof UnionType && nullableFromUnion(t) !== null)) {
-//         return optional(" Nothing");
-//     }
-//     if (t.kind === "null") {
-//         return optional(" ()");
-//     }
-//     return { reqOrOpt: "Jpipe.required", fallback: "" };
-// }
-
-type TopLevelDependent = {
-    encoder: Name;
-    decoder?: Name;
-};
-
-type NamedTypeDependent = {
-    encoder: Name;
-    decoder: Name;
-};
-
 export class HaskellRenderer extends ConvenienceRenderer {
-    private readonly _topLevelDependents = new Map<Name, TopLevelDependent>();
-    private readonly _namedTypeDependents = new Map<Name, NamedTypeDependent>();
-
     constructor(
         targetLanguage: TargetLanguage,
         renderContext: RenderContext,
@@ -200,20 +135,9 @@ export class HaskellRenderer extends ConvenienceRenderer {
     }
 
     protected makeTopLevelDependencyNames(t: Type, topLevelName: Name): DependencyName[] {
-        const encoder = new DependencyName(
-            lowerNamingFunction,
-            topLevelName.order,
-            (lookup) => `${lookup(topLevelName)}_to_string`
-        );
-        let decoder: DependencyName | undefined = undefined;
-        if (this.namedTypeToNameForTopLevel(t) === undefined) {
-            decoder = new DependencyName(lowerNamingFunction, topLevelName.order, (lookup) => lookup(topLevelName));
-        }
-        this._topLevelDependents.set(topLevelName, { encoder, decoder });
-        if (decoder !== undefined) {
-            return [encoder, decoder];
-        }
-        return [encoder];
+        t;
+        topLevelName;
+        return [];
     }
 
     protected makeNamedTypeNamer(): Namer {
@@ -221,14 +145,9 @@ export class HaskellRenderer extends ConvenienceRenderer {
     }
 
     protected makeNamedTypeDependencyNames(_: Type, typeName: Name): DependencyName[] {
-        const encoder = new DependencyName(
-            lowerNamingFunction,
-            typeName.order,
-            (lookup) => `encode_${lookup(typeName)}`
-        );
-        const decoder = new DependencyName(lowerNamingFunction, typeName.order, (lookup) => lookup(typeName));
-        this._namedTypeDependents.set(typeName, { encoder, decoder });
-        return [encoder, decoder];
+        _;
+        typeName;
+        return [];
     }
 
     protected namerForObjectProperty(): Namer {
@@ -277,22 +196,24 @@ export class HaskellRenderer extends ConvenienceRenderer {
         }
     }
 
-    private get arrayType(): string {
-        return this._options.useList ? "List" : "Array";
-    }
-
     private haskellType(t: Type, noOptional: boolean = false): MultiWord {
         return matchType<MultiWord>(
             t,
             (_anyType) => singleWord(annotated(anyTypeIssueAnnotation, "Jdec.Value")),
-            (_nullType) => singleWord(annotated(nullTypeIssueAnnotation, "()")),
+            (_nullType) => singleWord("()"),
             (_boolType) => singleWord("Bool"),
             (_integerType) => singleWord("Int"),
             (_doubleType) => singleWord("Float"),
             (_stringType) => singleWord("Text"),
-            (arrayType) => multiWord(" ", this.arrayType, parenIfNeeded(this.haskellType(arrayType.items))),
+            // (arrayType) => multiWord(" ", this.arrayType, parenIfNeeded(this.haskellType(arrayType.items))),
+            (arrayType) => {
+                if (this._options.useList) {
+                    return multiWord("", "[", parenIfNeeded(this.haskellType(arrayType.items)), "]");
+                }
+                return multiWord(" ", "Vector", parenIfNeeded(this.haskellType(arrayType.items)));
+            },
             (classType) => singleWord(this.nameForNamedType(classType)),
-            (mapType) => multiWord(" ", "Map Text", parenIfNeeded(this.haskellType(mapType.values))),
+            (mapType) => multiWord(" ", "HashMap Text", parenIfNeeded(this.haskellType(mapType.values))),
             (enumType) => singleWord(this.nameForNamedType(enumType)),
             (unionType) => {
                 const nullable = nullableFromUnion(unionType);
@@ -312,96 +233,6 @@ export class HaskellRenderer extends ConvenienceRenderer {
         } else {
             return this.haskellType(p.type).source;
         }
-    }
-
-    private decoderNameForNamedType(t: Type): Name {
-        const name = this.nameForNamedType(t);
-        return defined(this._namedTypeDependents.get(name)).decoder;
-    }
-
-    private decoderNameForType(t: Type, noOptional: boolean = false): MultiWord {
-        return matchType<MultiWord>(
-            t,
-            (_anyType) => singleWord("Jdec.value"),
-            (_nullType) => multiWord(" ", "Jdec.null", "()"),
-            (_boolType) => singleWord("Jdec.bool"),
-            (_integerType) => singleWord("Jdec.int"),
-            (_doubleType) => singleWord("Jdec.float"),
-            (_stringType) => singleWord("Jdec.string"),
-            (arrayType) =>
-                multiWord(
-                    " ",
-                    ["Jdec.", decapitalize(this.arrayType)],
-                    parenIfNeeded(this.decoderNameForType(arrayType.items))
-                ),
-            (classType) => singleWord(this.decoderNameForNamedType(classType)),
-            (mapType) => multiWord(" ", "Jdec.dict", parenIfNeeded(this.decoderNameForType(mapType.values))),
-            (enumType) => singleWord(this.decoderNameForNamedType(enumType)),
-            (unionType) => {
-                const nullable = nullableFromUnion(unionType);
-                if (nullable !== null) {
-                    const nullableDecoder = this.decoderNameForType(nullable);
-                    if (noOptional) return nullableDecoder;
-                    return multiWord(" ", "Jdec.nullable", parenIfNeeded(nullableDecoder));
-                }
-                return singleWord(this.decoderNameForNamedType(unionType));
-            }
-        );
-    }
-
-    // private decoderNameForProperty(p: ClassProperty): MultiWord {
-    //     if (p.isOptional) {
-    //         return multiWord(" ", "Jdec.nullable", parenIfNeeded(this.decoderNameForType(p.type, true)));
-    //     } else {
-    //         return this.decoderNameForType(p.type);
-    //     }
-    // }
-
-    private encoderNameForNamedType(t: Type): Name {
-        const name = this.nameForNamedType(t);
-        return defined(this._namedTypeDependents.get(name)).encoder;
-    }
-
-    private encoderNameForType(t: Type, noOptional: boolean = false): MultiWord {
-        return matchType<MultiWord>(
-            t,
-            (_anyType) => singleWord("identity"),
-            (_nullType) => multiWord(" ", "always", "Jenc.null"),
-            (_boolType) => singleWord("Jenc.bool"),
-            (_integerType) => singleWord("Jenc.int"),
-            (_doubleType) => singleWord("Jenc.float"),
-            (_stringType) => singleWord("Jenc.string"),
-            (arrayType) =>
-                multiWord(
-                    " ",
-                    ["make", this.arrayType, "Encoder"],
-                    parenIfNeeded(this.encoderNameForType(arrayType.items))
-                ),
-            (classType) => singleWord(this.encoderNameForNamedType(classType)),
-            (mapType) => multiWord(" ", "makeDictEncoder", parenIfNeeded(this.encoderNameForType(mapType.values))),
-            (enumType) => singleWord(this.encoderNameForNamedType(enumType)),
-            (unionType) => {
-                const nullable = nullableFromUnion(unionType);
-                if (nullable !== null) {
-                    const nullableEncoder = this.encoderNameForType(nullable);
-                    if (noOptional) return nullableEncoder;
-                    return multiWord(" ", "makeNullableEncoder", parenIfNeeded(nullableEncoder));
-                }
-                return singleWord(this.encoderNameForNamedType(unionType));
-            }
-        );
-    }
-
-    // private encoderNameForProperty(p: ClassProperty): MultiWord {
-    //     if (p.isOptional) {
-    //         return multiWord(" ", "makeNullableEncoder", parenIfNeeded(this.encoderNameForType(p.type, true)));
-    //     } else {
-    //         return this.encoderNameForType(p.type);
-    //     }
-    // }
-
-    private emitTopLevelDefinition(t: Type, topLevelName: Name): void {
-        this.emitLine("data ", topLevelName, " = ", this.haskellType(t).source);
     }
 
     private emitClassDefinition(c: ClassType, className: Name): void {
@@ -432,6 +263,7 @@ export class HaskellRenderer extends ConvenienceRenderer {
             }
             this.emitLine("} deriving (Generic, Show)");
         });
+        this.emitEncoderInstances(className);
     }
 
     private emitEnumDefinition(e: EnumType, enumName: Name): void {
@@ -445,6 +277,7 @@ export class HaskellRenderer extends ConvenienceRenderer {
                 onFirst = false;
             });
         });
+        this.emitEncoderInstances(enumName);
     }
 
     private emitUnionDefinition(u: UnionType, unionName: Name): void {
@@ -462,145 +295,12 @@ export class HaskellRenderer extends ConvenienceRenderer {
                 onFirst = false;
             });
         });
+        this.emitEncoderInstances(unionName);
     }
 
-    private emitTopLevelFunctions(t: Type, topLevelName: Name): void {
-        const { encoder, decoder } = defined(this._topLevelDependents.get(topLevelName));
-        if (this.namedTypeToNameForTopLevel(t) === undefined) {
-            this.emitLine(defined(decoder), " :: Jdec.Decoder ", topLevelName);
-            this.emitLine(defined(decoder), " = ", this.decoderNameForType(t).source);
-            this.ensureBlankLine();
-        }
-        this.emitLine(encoder, " :: ", topLevelName, " -> ByteString");
-        // this.emitLine(encoder, " r = encode (", this.encoderNameForType(t).source, " r)");
-        this.emitLine(encoder, " = encode");
-    }
-
-    private emitEncoderInstances(c: ClassType, className: Name): void {
+    private emitEncoderInstances(className: Name): void {
         this.emitLine("makeFields ''", className);
         this.emitLine("deriveJSON defaultOptions{fieldLabelModifier = map toLower . drop (2 + length (\"", className, "\" :: String))} ''", className);
-        c;
-        //     const encoderName = this.encoderNameForNamedType(c);
-        //     this.emitLine("instance ToJSON ", encoderName, " ", className, " where");
-        //     this.emitLine("toJSON (", encoderName, ") =");
-        //     this.indent(() => {
-        //         this.emitLine("object");
-        //         this.indent(() => {
-        //             let onFirst = true;
-        //             this.forEachClassProperty(c, "none", (name, jsonName, p) => {
-        //                 const bracketOrComma = onFirst ? "[" : ",";
-        //                 const propEncoder = this.encoderNameForProperty(p).source;
-        //                 this.emitLine(bracketOrComma, ' ("', stringEscape(jsonName), '", ', propEncoder, " x.", name, ")");
-        //                 onFirst = false;
-        //             });
-        //             if (onFirst) {
-        //                 this.emitLine("[");
-        //             }
-        //             this.emitLine("]");
-        //         });
-        //     });
-
-    }
-
-    private emitClassFunctions(c: ClassType, className: Name): void {
-        const decoderName = this.decoderNameForNamedType(c);
-        this.emitLine(decoderName, " :: ByteString -> Maybe ", className);
-        // this.emitLine(decoderName, " =");
-        this.emitLine(decoderName, " = decode");
-        // this.indent(() => {
-        //     this.emitLine("decode ", className);
-        // this.indent(() => {
-        //     this.forEachClassProperty(c, "none", (_, jsonName, p) => {
-        //         const propDecoder = parenIfNeeded(this.decoderNameForProperty(p));
-        //         const { reqOrOpt, fallback } = requiredOrOptional(p);
-        //         this.emitLine("|> ", reqOrOpt, ' "', stringEscape(jsonName), '" ', propDecoder, fallback);
-        //     });
-        // });
-        // });
-        this.ensureBlankLine();
-        this.emitEncoderInstances(c, className);
-    }
-
-    private emitEnumFunctions(e: EnumType, enumName: Name): void {
-        const decoderName = this.decoderNameForNamedType(e);
-        this.emitLine(decoderName, " :: Jdec.Decoder ", enumName);
-        this.emitLine(decoderName, " =");
-        this.indent(() => {
-            this.emitLine("Jdec.string");
-            this.indent(() => {
-                this.emitLine("|> Jdec.andThen (\\str ->");
-                this.indent(() => {
-                    this.emitLine("case str of");
-                    this.indent(() => {
-                        this.forEachEnumCase(e, "none", (name, jsonName) => {
-                            this.emitLine('"', stringEscape(jsonName), '" -> Jdec.succeed ', name);
-                        });
-                        this.emitLine('somethingElse -> Jdec.fail <| "Invalid ', enumName, ': " ++ somethingElse');
-                    });
-                });
-                this.emitLine(")");
-            });
-        });
-        this.ensureBlankLine();
-
-        const encoderName = this.encoderNameForNamedType(e);
-        this.emitLine(encoderName, " :: ", enumName, " -> Value");
-        this.emitLine(encoderName, " x = case x of");
-        this.indent(() => {
-            this.forEachEnumCase(e, "none", (name, jsonName) => {
-                this.emitLine(name, ' -> Jenc.string "', stringEscape(jsonName), '"');
-            });
-        });
-    }
-
-    private emitUnionFunctions(u: UnionType, unionName: Name): void {
-        // We need arrays first, then strings, and integers before doubles.
-        function sortOrder(_: Name, t: Type): string {
-            if (t.kind === "array") {
-                return "  array";
-            } else if (t.kind === "double") {
-                return " xdouble";
-            } else if (t.isPrimitive()) {
-                return " " + t.kind;
-            }
-            return t.kind;
-        }
-
-        const decoderName = this.decoderNameForNamedType(u);
-        this.emitLine(decoderName, " : Jdec.Decoder ", unionName);
-        this.emitLine(decoderName, " =");
-        this.indent(() => {
-            this.emitLine("Jdec.oneOf");
-            this.indent(() => {
-                let onFirst = true;
-                this.forEachUnionMember(u, null, "none", sortOrder, (constructor, t) => {
-                    const bracketOrComma = onFirst ? "[" : ",";
-                    if (t.kind === "null") {
-                        this.emitLine(bracketOrComma, " Jdec.null ", constructor);
-                    } else {
-                        const decoder = parenIfNeeded(this.decoderNameForType(t));
-                        this.emitLine(bracketOrComma, " Jdec.map ", constructor, " ", decoder);
-                    }
-                    onFirst = false;
-                });
-                this.emitLine("]");
-            });
-        });
-        this.ensureBlankLine();
-
-        const encoderName = this.encoderNameForNamedType(u);
-        this.emitLine(encoderName, " :: ", unionName, " -> Value");
-        this.emitLine(encoderName, " x = case x of");
-        this.indent(() => {
-            this.forEachUnionMember(u, null, "none", sortOrder, (constructor, t) => {
-                if (t.kind === "null") {
-                    this.emitLine(constructor, " -> Jenc.null");
-                } else {
-                    const encoder = this.encoderNameForType(t).source;
-                    this.emitLine(constructor, " y -> ", encoder, " y");
-                }
-            });
-        });
     }
 
     private emitLanguageExtensions(ext: string): void {
@@ -609,23 +309,17 @@ export class HaskellRenderer extends ConvenienceRenderer {
 
     protected emitSourceStructure(): void {
         const exports: Sourcelike[] = [];
-        const topLevelDecoders: Sourcelike[] = [];
         this.forEachTopLevel("none", (_, name) => {
-            let { encoder, decoder } = defined(this._topLevelDependents.get(name));
-            if (decoder === undefined) {
-                decoder = defined(this._namedTypeDependents.get(name)).decoder;
-            }
-            topLevelDecoders.push(decoder);
-            exports.push(name, encoder, decoder);
+            exports.push([name, " (..)"]);
         });
         this.forEachObject("none", (t: ClassType, name: Name) => {
-            if (!mapContains(this.topLevels, t)) exports.push(name);
+            if (!mapContains(this.topLevels, t)) exports.push([name, " (..)"]);
         });
         this.forEachEnum("none", (t, name) => {
-            if (!mapContains(this.topLevels, t)) exports.push([name, "(..)"]);
+            if (!mapContains(this.topLevels, t)) exports.push([name, " (..)"]);
         });
         this.forEachUnion("none", (t, name) => {
-            if (!mapContains(this.topLevels, t)) exports.push([name, "(..)"]);
+            if (!mapContains(this.topLevels, t)) exports.push([name, " (..)"]);
         });
 
         this.emitLanguageExtensions('DeriveAnyClass');
@@ -648,23 +342,16 @@ export class HaskellRenderer extends ConvenienceRenderer {
 import Data.Aeson
 import Data.Aeson.TH
 import Data.Aeson.Types
-import Data.ByteString.Lazy (ByteString)
 import Data.Char (toLower)
 import Data.Text (Text)
-import qualified Data.Text as T
 import GHC.Generics`);
-            // if (this._options.useList) {
-            //     this.emitLine("import List exposing (map)");
-            // } else {
-            //     this.emitLine("import Array exposing (Array, map)");
-            // }
+            if (this._options.useList) {
+                // this.emitLine("import List (map)");
+            } else {
+                this.emitLine("import Data.Vector (Vector)");
+            }
         }
 
-        this.forEachTopLevel(
-            "leading-and-interposing",
-            (t: Type, topLevelName: Name) => this.emitTopLevelDefinition(t, topLevelName),
-            (t) => this.namedTypeToNameForTopLevel(t) === undefined
-        );
         this.forEachNamedType(
             "leading-and-interposing",
             (c: ClassType, className: Name) => this.emitClassDefinition(c, className),
@@ -675,34 +362,5 @@ import GHC.Generics`);
         if (this._options.justTypes) return;
 
         this.ensureBlankLine();
-        this.emitLine("-- decoders and encoders");
-        this.forEachTopLevel("leading-and-interposing", (t: Type, topLevelName: Name) =>
-            this.emitTopLevelFunctions(t, topLevelName)
-        );
-        this.forEachNamedType(
-            "leading-and-interposing",
-            (c: ClassType, className: Name) => this.emitClassFunctions(c, className),
-            (e: EnumType, enumName: Name) => this.emitEnumFunctions(e, enumName),
-            (u: UnionType, unionName: Name) => this.emitUnionFunctions(u, unionName)
-        );
-        // this.ensureBlankLine();
-
-        // this.emitLine("--- encoder helpers");
-        // this.ensureBlankLine();
-        // this.emitLine("make", this.arrayType, "Encoder : (a -> Jenc.Value) -> ", this.arrayType, " a -> Jenc.Value");
-        // this.emitLine("make", this.arrayType, "Encoder f arr =");
-        // this.indent(() => {
-        //     this.emitLine("Jenc.", decapitalize(this.arrayType), " (", this.arrayType, ".map f arr)");
-        // });
-        // this.ensureBlankLine();
-        //         this.emitMultiline(`makeDictEncoder : (a -> Jenc.Value) -> Dict String a -> Jenc.Value
-        // makeDictEncoder f dict =
-        //     Jenc.object (toList (Dict.map (\\k -> f) dict))
-
-        // makeNullableEncoder : (a -> Jenc.Value) -> Maybe a -> Jenc.Value
-        // makeNullableEncoder f m =
-        //     case m of
-        //     Just x -> f x
-        //     Nothing -> Jenc.null`);
     }
 }
