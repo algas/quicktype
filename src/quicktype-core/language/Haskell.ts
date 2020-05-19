@@ -200,12 +200,11 @@ export class HaskellRenderer extends ConvenienceRenderer {
         return matchType<MultiWord>(
             t,
             (_anyType) => singleWord(annotated(anyTypeIssueAnnotation, "Jdec.Value")),
-            (_nullType) => singleWord("()"),
+            (_nullType) => multiWord(" ", "Value", "Null"),
             (_boolType) => singleWord("Bool"),
             (_integerType) => singleWord("Int"),
             (_doubleType) => singleWord("Float"),
             (_stringType) => singleWord("Text"),
-            // (arrayType) => multiWord(" ", this.arrayType, parenIfNeeded(this.haskellType(arrayType.items))),
             (arrayType) => {
                 if (this._options.useList) {
                     return multiWord("", "[", parenIfNeeded(this.haskellType(arrayType.items)), "]");
@@ -255,7 +254,7 @@ export class HaskellRenderer extends ConvenienceRenderer {
         this.indent(() => {
             let onFirst = true;
             this.forEachClassProperty(c, "none", (name, _jsonName, p) => {
-                this.emitLine(onFirst ? "{" : ",", " _", className, "_", name, " :: ", this.haskellProperty(p));
+                this.emitLine(onFirst ? "{" : ",", " ", name, " :: ", this.haskellProperty(p));
                 onFirst = false;
             });
             if (onFirst) {
@@ -263,7 +262,6 @@ export class HaskellRenderer extends ConvenienceRenderer {
             }
             this.emitLine("} deriving (Generic, Show)");
         });
-        this.emitEncoderInstances(className);
     }
 
     private emitEnumDefinition(e: EnumType, enumName: Name): void {
@@ -277,7 +275,6 @@ export class HaskellRenderer extends ConvenienceRenderer {
                 onFirst = false;
             });
         });
-        this.emitEncoderInstances(enumName);
     }
 
     private emitUnionDefinition(u: UnionType, unionName: Name): void {
@@ -295,12 +292,22 @@ export class HaskellRenderer extends ConvenienceRenderer {
                 onFirst = false;
             });
         });
-        this.emitEncoderInstances(unionName);
     }
 
-    private emitEncoderInstances(className: Name): void {
-        this.emitLine("makeFields ''", className);
-        this.emitLine("deriveJSON defaultOptions{fieldLabelModifier = map toLower . drop (2 + length (\"", className, "\" :: String))} ''", className);
+    private emitClassFunctions(c: ClassType, className: Name): void {
+        c;
+        this.emitLine("makeFieldsNoPrefix ''", className);
+        this.emitLine("deriveJSON defaultOptions ''", className);
+    }
+
+    private emitEnumFunctions(e: EnumType, enumName: Name): void {
+        e;
+        enumName;
+    }
+
+    private emitUnionFunctions(u: UnionType, unionName: Name): void {
+        u;
+        unionName;
     }
 
     private emitLanguageExtensions(ext: string): void {
@@ -322,8 +329,10 @@ export class HaskellRenderer extends ConvenienceRenderer {
             if (!mapContains(this.topLevels, t)) exports.push([name, " (..)"]);
         });
 
+        this.emitLanguageExtensions('DataKinds');
         this.emitLanguageExtensions('DeriveAnyClass');
         this.emitLanguageExtensions('DeriveGeneric');
+        this.emitLanguageExtensions('DuplicateRecordFields');
         this.emitLanguageExtensions('FunctionalDependencies');
         this.emitLanguageExtensions('OverloadedStrings');
         this.emitLanguageExtensions('TemplateHaskell');
@@ -357,6 +366,13 @@ import GHC.Generics`);
             (c: ClassType, className: Name) => this.emitClassDefinition(c, className),
             (e: EnumType, enumName: Name) => this.emitEnumDefinition(e, enumName),
             (u: UnionType, unionName: Name) => this.emitUnionDefinition(u, unionName)
+        );
+
+        this.forEachNamedType(
+            "leading-and-interposing",
+            (c: ClassType, className: Name) => this.emitClassFunctions(c, className),
+            (e: EnumType, enumName: Name) => this.emitEnumFunctions(e, enumName),
+            (u: UnionType, unionName: Name) => this.emitUnionFunctions(u, unionName)
         );
 
         if (this._options.justTypes) return;
