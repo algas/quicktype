@@ -305,8 +305,7 @@ export class HaskellRenderer extends ConvenienceRenderer {
         topLevelName;
     }
 
-    private emitClassFunctions(c: ClassType, className: Name): void {
-        c;
+    private emitEncoderInstance(c: ClassType, className: Name): void {
         let classProperties: Array<Name | string> = [];
         this.forEachClassProperty(c, "none", (name, _jsonName) => {
             classProperties.push(" ");
@@ -329,6 +328,32 @@ export class HaskellRenderer extends ConvenienceRenderer {
                 this.emitLine("]");
             });
         });
+    }
+
+    private emitDecoderInstance(c: ClassType, className: Name): void {
+        this.emitLine("instance FromJSON ", className, " where");
+        this.indent(() => {
+            this.emitLine("parseJSON (Object v) = ", className);
+            this.indent(() => {
+                let onFirst = true;
+                this.forEachClassProperty(c, "none", (name, _jsonName, p) => {
+                    const operator = p.isOptional ? ".:?" : ".:"
+                    this.emitLine(onFirst ? "<$> " : "<*> ", "v ", operator, " \"", _jsonName, "\"");
+                    onFirst = false;
+                    name;
+                });
+                if (onFirst) {
+                    this.emitLine("<$>");
+                }
+            });
+        });
+
+    }
+
+    private emitClassFunctions(c: ClassType, className: Name): void {
+        this.emitEncoderInstance(c, className);
+        this.ensureBlankLine();
+        this.emitDecoderInstance(c, className);
     }
 
     private emitEnumFunctions(e: EnumType, enumName: Name): void {
