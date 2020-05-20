@@ -17,8 +17,7 @@ import {
     allLowerWordStyle,
     allUpperWordStyle,
 } from "../support/Strings";
-import { Sourcelike, annotated, MultiWord, singleWord, multiWord, parenIfNeeded } from "../Source";
-import { anyTypeIssueAnnotation } from "../Annotation";
+import { Sourcelike, MultiWord, singleWord, multiWord, parenIfNeeded } from "../Source";
 import { RenderContext } from "../Renderer";
 
 export const haskellOptions = {
@@ -100,6 +99,8 @@ const forbiddenNames = [
     // Aeson types
     "encode",
     "decode",
+    // Others
+    "QuickType",
 ];
 
 const legalizeName = legalizeCharacters((cp) => isAscii(cp) && isLetterOrUnderscoreOrDigit(cp));
@@ -199,8 +200,8 @@ export class HaskellRenderer extends ConvenienceRenderer {
     private haskellType(t: Type, noOptional: boolean = false): MultiWord {
         return matchType<MultiWord>(
             t,
-            (_anyType) => singleWord(annotated(anyTypeIssueAnnotation, "Jdec.Value")),
-            (_nullType) => multiWord(" ", "Value", "Null"),
+            (_anyType) => multiWord(" ", "Maybe", "Text"),
+            (_nullType) => multiWord(" ", "Maybe", "Text"),
             (_boolType) => singleWord("Bool"),
             (_integerType) => singleWord("Int"),
             (_doubleType) => singleWord("Float"),
@@ -234,6 +235,10 @@ export class HaskellRenderer extends ConvenienceRenderer {
         }
     }
 
+    private emitTopLevelDefinition(t: Type, topLevelName: Name): void {
+        this.emitLine("type ", topLevelName, " = ", this.haskellType(t).source);
+    }
+
     private emitClassDefinition(c: ClassType, className: Name): void {
         let description = this.descriptionForType(c);
         this.forEachClassProperty(c, "none", (name, jsonName) => {
@@ -254,7 +259,7 @@ export class HaskellRenderer extends ConvenienceRenderer {
         this.indent(() => {
             let onFirst = true;
             this.forEachClassProperty(c, "none", (name, _jsonName, p) => {
-                this.emitLine(onFirst ? "{" : ",", " ", name, " :: ", this.haskellProperty(p));
+                this.emitLine(onFirst ? "{" : ",", " _", name, " :: ", this.haskellProperty(p));
                 onFirst = false;
             });
             if (onFirst) {
@@ -297,7 +302,7 @@ export class HaskellRenderer extends ConvenienceRenderer {
     private emitClassFunctions(c: ClassType, className: Name): void {
         c;
         this.emitLine("makeFieldsNoPrefix ''", className);
-        this.emitLine("deriveJSON defaultOptions ''", className);
+        this.emitLine("deriveJSON defaultOptions{fieldLabelModifier = drop 1} ''", className);
     }
 
     private emitEnumFunctions(e: EnumType, enumName: Name): void {
@@ -333,6 +338,7 @@ export class HaskellRenderer extends ConvenienceRenderer {
         this.emitLanguageExtensions('DeriveAnyClass');
         this.emitLanguageExtensions('DeriveGeneric');
         this.emitLanguageExtensions('DuplicateRecordFields');
+        this.emitLanguageExtensions('FlexibleInstances');
         this.emitLanguageExtensions('FunctionalDependencies');
         this.emitLanguageExtensions('OverloadedStrings');
         this.emitLanguageExtensions('TemplateHaskell');
@@ -352,6 +358,7 @@ import Data.Aeson
 import Data.Aeson.TH
 import Data.Aeson.Types
 import Data.Char (toLower)
+import Data.HashMap.Strict (HashMap)
 import Data.Text (Text)
 import GHC.Generics`);
             if (this._options.useList) {
@@ -360,6 +367,12 @@ import GHC.Generics`);
                 this.emitLine("import Data.Vector (Vector)");
             }
         }
+
+        this.forEachTopLevel(
+            "leading-and-interposing",
+            (t: Type, topLevelName: Name) => this.emitTopLevelDefinition(t, topLevelName),
+            t => this.namedTypeToNameForTopLevel(t) === undefined
+        );
 
         this.forEachNamedType(
             "leading-and-interposing",
