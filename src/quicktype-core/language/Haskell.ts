@@ -10,6 +10,7 @@ import {
     legalizeCharacters,
     isLetterOrUnderscoreOrDigit,
     isLetterOrUnderscore,
+    stringEscape,
     isAscii,
     splitIntoWords,
     combineWords,
@@ -201,8 +202,8 @@ export class HaskellRenderer extends ConvenienceRenderer {
     private haskellType(t: Type, noOptional: boolean = false): MultiWord {
         return matchType<MultiWord>(
             t,
-            (_anyType) => singleWord(annotated(anyTypeIssueAnnotation, "Maybe Text")),
-            (_nullType) => singleWord(annotated(nullTypeIssueAnnotation, "Maybe Text")),
+            (_anyType) => multiWord(" ", "Maybe", annotated(anyTypeIssueAnnotation, "Text")),
+            (_nullType) => multiWord(" ", "Maybe", annotated(nullTypeIssueAnnotation, "Text")),
             (_boolType) => singleWord("Bool"),
             (_integerType) => singleWord("Int"),
             (_doubleType) => singleWord("Float"),
@@ -260,7 +261,7 @@ export class HaskellRenderer extends ConvenienceRenderer {
         this.indent(() => {
             let onFirst = true;
             this.forEachClassProperty(c, "none", (name, _jsonName, p) => {
-                this.emitLine(onFirst ? "{ " : ", ", name, " :: ", this.haskellProperty(p));
+                this.emitLine(onFirst ? "{ " : ", ", name, className, " :: ", this.haskellProperty(p));
                 onFirst = false;
             });
             if (onFirst) {
@@ -310,6 +311,7 @@ export class HaskellRenderer extends ConvenienceRenderer {
         this.forEachClassProperty(c, "none", (name, _jsonName) => {
             classProperties.push(" ");
             classProperties.push(name);
+            classProperties.push(className);
         });
 
         this.emitLine("instance ToJSON ", className, " where");
@@ -319,7 +321,7 @@ export class HaskellRenderer extends ConvenienceRenderer {
                 this.emitLine("object");
                 let onFirst = true;
                 this.forEachClassProperty(c, "none", (name, _jsonName) => {
-                    this.emitLine(onFirst ? "[ " : ", ", "\"", _jsonName, "\" .= ", name);
+                    this.emitLine(onFirst ? "[ " : ", ", "\"", stringEscape(_jsonName), "\" .= ", name, className);
                     onFirst = false;
                 });
                 if (onFirst) {
@@ -338,7 +340,7 @@ export class HaskellRenderer extends ConvenienceRenderer {
                 let onFirst = true;
                 this.forEachClassProperty(c, "none", (name, _jsonName, p) => {
                     const operator = p.isOptional ? ".:?" : ".:"
-                    this.emitLine(onFirst ? "<$> " : "<*> ", "v ", operator, " \"", _jsonName, "\"");
+                    this.emitLine(onFirst ? "<$> " : "<*> ", "v ", operator, " \"", stringEscape(_jsonName), "\"");
                     onFirst = false;
                     name;
                 });
