@@ -17,7 +17,8 @@ import {
     allLowerWordStyle,
     allUpperWordStyle,
 } from "../support/Strings";
-import { Sourcelike, MultiWord, singleWord, multiWord, parenIfNeeded } from "../Source";
+import { Sourcelike, annotated, MultiWord, singleWord, multiWord, parenIfNeeded } from "../Source";
+import { anyTypeIssueAnnotation, nullTypeIssueAnnotation } from "../Annotation";
 import { RenderContext } from "../Renderer";
 
 export const haskellOptions = {
@@ -200,8 +201,8 @@ export class HaskellRenderer extends ConvenienceRenderer {
     private haskellType(t: Type, noOptional: boolean = false): MultiWord {
         return matchType<MultiWord>(
             t,
-            (_anyType) => multiWord(" ", "Maybe", "Text"),
-            (_nullType) => multiWord(" ", "Maybe", "Text"),
+            (_anyType) => singleWord(annotated(anyTypeIssueAnnotation, "Maybe Text")),
+            (_nullType) => singleWord(annotated(nullTypeIssueAnnotation, "Maybe Text")),
             (_boolType) => singleWord("Bool"),
             (_integerType) => singleWord("Int"),
             (_doubleType) => singleWord("Float"),
@@ -259,13 +260,13 @@ export class HaskellRenderer extends ConvenienceRenderer {
         this.indent(() => {
             let onFirst = true;
             this.forEachClassProperty(c, "none", (name, _jsonName, p) => {
-                this.emitLine(onFirst ? "{" : ",", " _", name, " :: ", this.haskellProperty(p));
+                this.emitLine(onFirst ? "{ " : ", ", name, " :: ", this.haskellProperty(p));
                 onFirst = false;
             });
             if (onFirst) {
                 this.emitLine("{");
             }
-            this.emitLine("} deriving (Generic, Show)");
+            this.emitLine("} deriving (Show)");
         });
     }
 
@@ -299,10 +300,35 @@ export class HaskellRenderer extends ConvenienceRenderer {
         });
     }
 
+    private emitTopLevelFunctions(t: Type, topLevelName: Name): void {
+        t;
+        topLevelName;
+    }
+
     private emitClassFunctions(c: ClassType, className: Name): void {
         c;
-        this.emitLine("makeFieldsNoPrefix ''", className);
-        this.emitLine("deriveJSON defaultOptions{fieldLabelModifier = drop 1} ''", className);
+        let classProperties: Array<Name | string> = [];
+        this.forEachClassProperty(c, "none", (name, _jsonName) => {
+            classProperties.push(" ");
+            classProperties.push(name);
+        });
+
+        this.emitLine("instance ToJSON ", className, " where");
+        this.indent(() => {
+            this.emitLine("toJSON (", className, ...classProperties, ") =");
+            this.indent(() => {
+                this.emitLine("object");
+                let onFirst = true;
+                this.forEachClassProperty(c, "none", (name, _jsonName) => {
+                    this.emitLine(onFirst ? "[ " : ", ", "\"", _jsonName, "\" .= ", name);
+                    onFirst = false;
+                });
+                if (onFirst) {
+                    this.emitLine("[");
+                }
+                this.emitLine("]");
+            });
+        });
     }
 
     private emitEnumFunctions(e: EnumType, enumName: Name): void {
@@ -334,14 +360,7 @@ export class HaskellRenderer extends ConvenienceRenderer {
             if (!mapContains(this.topLevels, t)) exports.push([name, " (..)"]);
         });
 
-        this.emitLanguageExtensions('DataKinds');
-        this.emitLanguageExtensions('DeriveAnyClass');
-        this.emitLanguageExtensions('DeriveGeneric');
-        this.emitLanguageExtensions('DuplicateRecordFields');
-        this.emitLanguageExtensions('FlexibleInstances');
-        this.emitLanguageExtensions('FunctionalDependencies');
         this.emitLanguageExtensions('OverloadedStrings');
-        this.emitLanguageExtensions('TemplateHaskell');
 
         if (!this._options.justTypes) {
             this.ensureBlankLine();
@@ -353,14 +372,9 @@ export class HaskellRenderer extends ConvenienceRenderer {
                 this.emitLine(") where");
             });
             this.ensureBlankLine();
-            this.emitMultiline(`import Control.Lens
-import Data.Aeson
-import Data.Aeson.TH
-import Data.Aeson.Types
-import Data.Char (toLower)
+            this.emitMultiline(`import Data.Aeson
 import Data.HashMap.Strict (HashMap)
-import Data.Text (Text)
-import GHC.Generics`);
+import Data.Text (Text)`);
             if (this._options.useList) {
                 // this.emitLine("import List (map)");
             } else {
@@ -380,6 +394,8 @@ import GHC.Generics`);
             (e: EnumType, enumName: Name) => this.emitEnumDefinition(e, enumName),
             (u: UnionType, unionName: Name) => this.emitUnionDefinition(u, unionName)
         );
+
+        this.forEachTopLevel("leading-and-interposing", (t: Type, topLevelName: Name) => this.emitTopLevelFunctions(t, topLevelName));
 
         this.forEachNamedType(
             "leading-and-interposing",
