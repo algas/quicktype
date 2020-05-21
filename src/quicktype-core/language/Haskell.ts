@@ -1,3 +1,5 @@
+// object は対応できた
+// TODO: enum と union に対応する
 import { mapContains } from "collection-utils";
 
 import { TargetLanguage } from "../TargetLanguage";
@@ -278,9 +280,10 @@ export class HaskellRenderer extends ConvenienceRenderer {
             let onFirst = true;
             this.forEachEnumCase(e, "none", (name) => {
                 const equalsOrPipe = onFirst ? "=" : "|";
-                this.emitLine(equalsOrPipe, " ", name);
+                this.emitLine(equalsOrPipe, " ", name, enumName);
                 onFirst = false;
             });
+            this.emitLine("deriving (Show)");
         });
     }
 
@@ -298,6 +301,7 @@ export class HaskellRenderer extends ConvenienceRenderer {
                 }
                 onFirst = false;
             });
+            this.emitLine("deriving (Show)");
         });
     }
 
@@ -306,9 +310,9 @@ export class HaskellRenderer extends ConvenienceRenderer {
         topLevelName;
     }
 
-    private emitEncoderInstance(c: ClassType, className: Name): void {
+    private emitClassEncoderInstance(c: ClassType, className: Name): void {
         let classProperties: Array<Name | string> = [];
-        this.forEachClassProperty(c, "none", (name, _jsonName) => {
+        this.forEachClassProperty(c, "none", (name) => {
             classProperties.push(" ");
             classProperties.push(name);
             classProperties.push(className);
@@ -320,8 +324,8 @@ export class HaskellRenderer extends ConvenienceRenderer {
             this.indent(() => {
                 this.emitLine("object");
                 let onFirst = true;
-                this.forEachClassProperty(c, "none", (name, _jsonName) => {
-                    this.emitLine(onFirst ? "[ " : ", ", "\"", stringEscape(_jsonName), "\" .= ", name, className);
+                this.forEachClassProperty(c, "none", (name, jsonName) => {
+                    this.emitLine(onFirst ? "[ " : ", ", "\"", stringEscape(jsonName), "\" .= ", name, className);
                     onFirst = false;
                 });
                 if (onFirst) {
@@ -332,14 +336,14 @@ export class HaskellRenderer extends ConvenienceRenderer {
         });
     }
 
-    private emitDecoderInstance(c: ClassType, className: Name): void {
+    private emitClassDecoderInstance(c: ClassType, className: Name): void {
         this.emitLine("instance FromJSON ", className, " where");
         this.indent(() => {
             this.emitLine("parseJSON (Object v) = ", className);
             this.indent(() => {
                 let onFirst = true;
                 this.forEachClassProperty(c, "none", (name, _jsonName, p) => {
-                    const operator = p.isOptional ? ".:?" : ".:"
+                    const operator = p.isOptional ? ".:?" : ".:";
                     this.emitLine(onFirst ? "<$> " : "<*> ", "v ", operator, " \"", stringEscape(_jsonName), "\"");
                     onFirst = false;
                     name;
@@ -353,14 +357,39 @@ export class HaskellRenderer extends ConvenienceRenderer {
     }
 
     private emitClassFunctions(c: ClassType, className: Name): void {
-        this.emitEncoderInstance(c, className);
+        this.emitClassEncoderInstance(c, className);
         this.ensureBlankLine();
-        this.emitDecoderInstance(c, className);
+        this.emitClassDecoderInstance(c, className);
+    }
+
+    private emitEnumEncoderInstance(e: EnumType, enumName: Name): void {
+        this.emitLine("instance ToJSON ", enumName, " where");
+        this.indent(() => {
+            this.forEachEnumCase(e, "none", (name, jsonName) => {
+                this.emitLine("toJSON ", name, enumName, " = \"", stringEscape(jsonName), "\"");
+            });
+        });
+    }
+
+    private emitEnumDecoderInstance(e: EnumType, enumName: Name): void {
+        this.emitLine("instance FromJSON ", enumName, " where");
+        this.indent(() => {
+            this.emitLine("parseJSON = withText \"", enumName, "\" parseText");
+            this.indent(() => {
+                this.emitLine("where");
+                this.indent(() => {
+                    this.forEachEnumCase(e, "none", (name, jsonName) => {
+                        this.emitLine("parseText \"", stringEscape(jsonName), "\" = return ", name, enumName, "");
+                    });
+                });
+            });
+        });
     }
 
     private emitEnumFunctions(e: EnumType, enumName: Name): void {
-        e;
-        enumName;
+        this.emitEnumEncoderInstance(e, enumName);
+        this.ensureBlankLine();
+        this.emitEnumDecoderInstance(e, enumName);
     }
 
     private emitUnionFunctions(u: UnionType, unionName: Name): void {
