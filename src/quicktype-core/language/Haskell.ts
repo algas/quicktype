@@ -412,8 +412,13 @@ export class HaskellRenderer extends ConvenienceRenderer {
     private emitUnionEncoderInstance(u: UnionType, unionName: Name): void {
         this.emitLine("instance ToJSON ", unionName, " where");
         this.indent(() => {
-            this.forEachUnionMember(u, null, "none", null, (constructor) => {
-                this.emitLine("toJSON (", constructor, " x) = toJSON x");
+            this.forEachUnionMember(u, null, "none", null, (constructor, t) => {
+                if (t.kind == "null") {
+                    this.emitLine("toJSON ", constructor, " = Null");
+                }
+                else {
+                    this.emitLine("toJSON (", constructor, " x) = toJSON x");
+                }
             });
         });
     }
@@ -422,11 +427,15 @@ export class HaskellRenderer extends ConvenienceRenderer {
         this.emitLine("instance FromJSON ", unionName, " where");
         this.indent(() => {
             this.forEachUnionMember(u, null, "none", null, (constructor, t) => {
-                this.emitLine("parseJSON xs@(", this.encoderNameForType(t).source, " _) = (fmap ", constructor, " . parseJSON) xs");
+                if (t.kind == "null") {
+                    this.emitLine("parseJSON Null = return ", constructor);
+                }
+                else {
+                    this.emitLine("parseJSON xs@(", this.encoderNameForType(t).source, " _) = (fmap ", constructor, " . parseJSON) xs");
+                }
             });
         });
     }
-
 
     private emitUnionFunctions(u: UnionType, unionName: Name): void {
         this.emitUnionEncoderInstance(u, unionName);
