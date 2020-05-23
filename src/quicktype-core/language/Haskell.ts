@@ -392,9 +392,36 @@ export class HaskellRenderer extends ConvenienceRenderer {
         this.emitEnumDecoderInstance(e, enumName);
     }
 
-    private emitUnionFunctions(u: UnionType, unionName: Name): void {
+    private emitUnionEncoderInstance(u: UnionType, unionName: Name): void {
+        this.emitLine("instance ToJSON ", unionName, " where");
+        this.indent(() => {
+            this.forEachUnionMember(u, null, "none", null, (constructor) => {
+                this.emitLine("toJSON (", constructor, " x) = toJSON x");
+            });
+        });
+    }
+
+    private emitUnionDecoderInstance(u: UnionType, unionName: Name): void {
+        this.emitLine("instance FromJSON ", unionName, " where");
         u;
-        unionName;
+        // this.indent(() => {
+        //     this.emitLine("parseJSON = withText \"", enumName, "\" parseText");
+        //     this.indent(() => {
+        //         this.emitLine("where");
+        //         this.indent(() => {
+        //             this.forEachEnumCase(e, "none", (name, jsonName) => {
+        //                 this.emitLine("parseText \"", stringEscape(jsonName), "\" = return ", name, enumName, "");
+        //             });
+        //         });
+        //     });
+        // });
+    }
+
+
+    private emitUnionFunctions(u: UnionType, unionName: Name): void {
+        this.emitUnionEncoderInstance(u, unionName);
+        this.ensureBlankLine();
+        this.emitUnionDecoderInstance(u, unionName);
     }
 
     private emitLanguageExtensions(ext: string): void {
