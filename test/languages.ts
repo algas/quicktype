@@ -901,7 +901,7 @@ export const HaskellLanguage: Language = {
   compileCommand: "true",
   runCommand(sample: string) {
     // return `cat "${sample}"`;
-    return `stack exec haskell "${sample}"`;
+    return `stack run haskell -- "${sample}"`;
   },
   diffViaSchema: true,
   skipDiffViaSchema: [

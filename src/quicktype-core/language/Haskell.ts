@@ -202,10 +202,11 @@ export class HaskellRenderer extends ConvenienceRenderer {
     }
 
     private haskellType(t: Type, noOptional: boolean = false): MultiWord {
+        nullTypeIssueAnnotation;
         return matchType<MultiWord>(
             t,
             (_anyType) => multiWord(" ", "Maybe", annotated(anyTypeIssueAnnotation, "Text")),
-            (_nullType) => multiWord(" ", "Maybe", annotated(nullTypeIssueAnnotation, "Text")),
+            (_nullType) => multiWord(" ", "Maybe", "Text"),
             (_boolType) => singleWord("Bool"),
             (_integerType) => singleWord("Int"),
             (_doubleType) => singleWord("Float"),
@@ -324,7 +325,8 @@ export class HaskellRenderer extends ConvenienceRenderer {
 
     private emitTopLevelFunctions(t: Type, topLevelName: Name): void {
         t;
-        topLevelName;
+        this.emitLine("decodeTopLevel :: ByteString -> Maybe ", topLevelName);
+        this.emitLine("decodeTopLevel = decode");
     }
 
     private emitClassEncoderInstance(c: ClassType, className: Name): void {
@@ -471,10 +473,12 @@ export class HaskellRenderer extends ConvenienceRenderer {
                 for (let i = 0; i < exports.length; i++) {
                     this.emitLine(i === 0 ? "(" : ",", " ", exports[i]);
                 }
+                this.emitLine(", decodeTopLevel");
                 this.emitLine(") where");
             });
             this.ensureBlankLine();
             this.emitMultiline(`import Data.Aeson
+import Data.ByteString.Lazy (ByteString)
 import Data.HashMap.Strict (HashMap)
 import Data.Text (Text)`);
             if (this._options.useList) {
