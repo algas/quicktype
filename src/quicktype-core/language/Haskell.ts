@@ -20,8 +20,7 @@ import {
     allLowerWordStyle,
     allUpperWordStyle,
 } from "../support/Strings";
-import { Sourcelike, annotated, MultiWord, singleWord, multiWord, parenIfNeeded } from "../Source";
-import { anyTypeIssueAnnotation, nullTypeIssueAnnotation } from "../Annotation";
+import { Sourcelike, MultiWord, singleWord, multiWord, parenIfNeeded } from "../Source";
 import { RenderContext } from "../Renderer";
 
 export const haskellOptions = {
@@ -105,6 +104,8 @@ const forbiddenNames = [
     "decode",
     // Others
     "QuickType",
+    "Value",
+    "Object",
 ];
 
 const legalizeName = legalizeCharacters((cp) => isAscii(cp) && isLetterOrUnderscoreOrDigit(cp));
@@ -202,10 +203,9 @@ export class HaskellRenderer extends ConvenienceRenderer {
     }
 
     private haskellType(t: Type, noOptional: boolean = false): MultiWord {
-        nullTypeIssueAnnotation;
         return matchType<MultiWord>(
             t,
-            (_anyType) => multiWord(" ", "Maybe", annotated(anyTypeIssueAnnotation, "Text")),
+            (_anyType) => multiWord(" ", "Maybe", "Text"),
             (_nullType) => multiWord(" ", "Maybe", "Text"),
             (_boolType) => singleWord("Bool"),
             (_integerType) => singleWord("Int"),
@@ -329,6 +329,14 @@ export class HaskellRenderer extends ConvenienceRenderer {
         this.emitLine("decodeTopLevel = decode");
     }
 
+    private classPropertyLength(c: ClassType): number {
+        let counter: number = 0;
+        this.forEachClassProperty(c, "none", () => {
+            counter += 1;
+        });
+        return counter;
+    }
+
     private emitClassEncoderInstance(c: ClassType, className: Name): void {
         let classProperties: Array<Name | string> = [];
         this.forEachClassProperty(c, "none", (name) => {
@@ -339,38 +347,44 @@ export class HaskellRenderer extends ConvenienceRenderer {
 
         this.emitLine("instance ToJSON ", className, " where");
         this.indent(() => {
-            this.emitLine("toJSON (", className, ...classProperties, ") =");
-            this.indent(() => {
-                this.emitLine("object");
-                let onFirst = true;
-                this.forEachClassProperty(c, "none", (name, jsonName) => {
-                    this.emitLine(onFirst ? "[ " : ", ", "\"", stringEscape(jsonName), "\" .= ", name, className);
-                    onFirst = false;
+            if (classProperties.length == 0) {
+                this.emitLine("toJSON = \\_ -> emptyObject");
+            } else {
+                this.emitLine("toJSON (", className, ...classProperties, ") =");
+                this.indent(() => {
+                    this.emitLine("object");
+                    let onFirst = true;
+                    this.forEachClassProperty(c, "none", (name, jsonName) => {
+                        this.emitLine(onFirst ? "[ " : ", ", "\"", stringEscape(jsonName), "\" .= ", name, className);
+                        onFirst = false;
+                    });
+                    if (onFirst) {
+                        this.emitLine("[");
+                    }
+                    this.emitLine("]");
                 });
-                if (onFirst) {
-                    this.emitLine("[");
-                }
-                this.emitLine("]");
-            });
+            }
         });
     }
 
     private emitClassDecoderInstance(c: ClassType, className: Name): void {
         this.emitLine("instance FromJSON ", className, " where");
+
         this.indent(() => {
-            this.emitLine("parseJSON (Object v) = ", className);
-            this.indent(() => {
-                let onFirst = true;
-                this.forEachClassProperty(c, "none", (name, _jsonName, p) => {
-                    const operator = p.isOptional ? ".:?" : ".:";
-                    this.emitLine(onFirst ? "<$> " : "<*> ", "v ", operator, " \"", stringEscape(_jsonName), "\"");
-                    onFirst = false;
-                    name;
+            if (this.classPropertyLength(c) == 0) {
+                this.emitLine("parseJSON emptyObject = return ", className);
+            } else {
+                this.emitLine("parseJSON (Object v) = ", className);
+                this.indent(() => {
+                    let onFirst = true;
+                    this.forEachClassProperty(c, "none", (name, jsonName, p) => {
+                        const operator = p.isOptional ? ".:?" : ".:";
+                        this.emitLine(onFirst ? "<$> " : "<*> ", "v ", operator, " \"", stringEscape(jsonName), "\"");
+                        onFirst = false;
+                        name;
+                    });
                 });
-                if (onFirst) {
-                    this.emitLine("<$>");
-                }
-            });
+            }
         });
 
     }
@@ -478,6 +492,7 @@ export class HaskellRenderer extends ConvenienceRenderer {
             });
             this.ensureBlankLine();
             this.emitMultiline(`import Data.Aeson
+import Data.Aeson.Types (emptyObject)
 import Data.ByteString.Lazy (ByteString)
 import Data.HashMap.Strict (HashMap)
 import Data.Text (Text)`);
