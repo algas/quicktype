@@ -239,6 +239,23 @@ export class HaskellRenderer extends ConvenienceRenderer {
         }
     }
 
+    private encoderNameForType(t: Type): MultiWord {
+        return matchType<MultiWord>(
+            t,
+            _anyType => singleWord("String"),
+            _nullType => singleWord("Null"),
+            _boolType => singleWord("Bool"),
+            _integerType => singleWord("Number"),
+            _doubleType => singleWord("Number"),
+            _stringType => singleWord("String"),
+            _arrayType => singleWord("Array"),
+            _classType => singleWord("Object"),
+            _mapType => singleWord("Object"),
+            _enumType => singleWord("Object"),
+            _unionType => singleWord("Object")
+        );
+    }
+
     private emitTopLevelDefinition(t: Type, topLevelName: Name): void {
         this.emitLine("type ", topLevelName, " = ", this.haskellType(t).source);
     }
@@ -379,7 +396,7 @@ export class HaskellRenderer extends ConvenienceRenderer {
                 this.emitLine("where");
                 this.indent(() => {
                     this.forEachEnumCase(e, "none", (name, jsonName) => {
-                        this.emitLine("parseText \"", stringEscape(jsonName), "\" = return ", name, enumName, "");
+                        this.emitLine("parseText \"", stringEscape(jsonName), "\" = return ", name, enumName);
                     });
                 });
             });
@@ -403,18 +420,11 @@ export class HaskellRenderer extends ConvenienceRenderer {
 
     private emitUnionDecoderInstance(u: UnionType, unionName: Name): void {
         this.emitLine("instance FromJSON ", unionName, " where");
-        u;
-        // this.indent(() => {
-        //     this.emitLine("parseJSON = withText \"", enumName, "\" parseText");
-        //     this.indent(() => {
-        //         this.emitLine("where");
-        //         this.indent(() => {
-        //             this.forEachEnumCase(e, "none", (name, jsonName) => {
-        //                 this.emitLine("parseText \"", stringEscape(jsonName), "\" = return ", name, enumName, "");
-        //             });
-        //         });
-        //     });
-        // });
+        this.indent(() => {
+            this.forEachUnionMember(u, null, "none", null, (constructor, t) => {
+                this.emitLine("parseJSON xs@(", this.encoderNameForType(t).source, " _) = (fmap ", constructor, " . parseJSON) xs");
+            });
+        });
     }
 
 
