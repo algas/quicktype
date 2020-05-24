@@ -91,6 +91,7 @@ const forbiddenNames = [
     "type",
     "where",
     // in Prelude keywords ...
+    "id",
     "Array",
     "HashMap",
     "Map",
@@ -102,10 +103,14 @@ const forbiddenNames = [
     // Aeson types
     "encode",
     "decode",
-    // Others
-    "QuickType",
+    "text",
+    "Text",
     "Value",
     "Object",
+    "Result",
+    "Series",
+    // Others
+    "QuickType",
 ];
 
 const legalizeName = legalizeCharacters((cp) => isAscii(cp) && isLetterOrUnderscoreOrDigit(cp));
