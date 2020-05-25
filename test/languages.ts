@@ -897,10 +897,8 @@ export const HaskellLanguage: Language = {
   name: "haskell",
   base: "test/fixtures/haskell",
   setupCommand: "true",
-  // compileCommand: "stack build",
   compileCommand: "true",
   runCommand(sample: string) {
-    // return `cat "${sample}"`;
     return `stack run haskell -- "${sample}"`;
   },
   diffViaSchema: true,
@@ -962,20 +960,10 @@ export const HaskellLanguage: Language = {
     "recursive.json",
     "bug427.json",
     "nst-test-suite.json",
-    "keywords.json" // stack overflow
+    "keywords.json"
   ],
   skipMiscJSON: false,
-  skipSchema: [
-    "constructor.schema", // can't handle "constructor" property
-    "union-list.schema", // recursion
-    "list.schema", // recursion
-    "ref-remote.schema", // recursion
-    "mutually-recursive.schema", // recursion
-    "postman-collection.schema", // recursion
-    "vega-lite.schema", // recursion
-    "simple-ref.schema", // recursion
-    "keyword-unions.schema" // can't handle "hasOwnProperty" for some reason
-  ],
+  skipSchema: [],
   rendererOptions: {},
   quickTestRendererOptions: [{ "array-type": "list" }],
   sourceFiles: ["src/language/Haskell.ts"]
