@@ -483,6 +483,7 @@ export class HaskellRenderer extends ConvenienceRenderer {
             if (!mapContains(this.topLevels, t)) exports.push([name, " (..)"]);
         });
 
+        this.emitLanguageExtensions('StrictData');
         this.emitLanguageExtensions('OverloadedStrings');
 
         if (!this._options.justTypes) {
