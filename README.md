@@ -34,7 +34,7 @@
 | [Swift](https://app.quicktype.io/#l=swift) | [Objective-C](https://app.quicktype.io/#l=objc) | [Elm](https://app.quicktype.io/#l=elm) | [JSON Schema](https://app.quicktype.io/#l=schema) | [Pike](https://app.quicktype.io/#l=pike) | [Prop-Types](https://app.quicktype.io/#l=javascript-prop-types) |
 | ------------------------------------------ | ----------------------------------------------- | -------------------------------------- | ------------------------------------------------- | ---------------------------------------- | --------------------------------------------------------------- |
 
-| [Haskell](https://app.quicktype.io/#l=haskell) | | | | | |
+| [Haskell](https://app.quicktype.io/#l=haskell) |
 | ------------------------------------------ | ----------------------------------------------- | -------------------------------------- | ------------------------------------------------- | ---------------------------------------- | --------------------------------------------------------------- |
 
 _Missing your favorite language? Please implement it!_
